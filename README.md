@@ -1,11 +1,15 @@
 # Clinic OS AI
 
-A small-clinic operations product for scheduling, queues, consultation workflows and evidence-based operational analytics.
+Clinic OS is a small-clinic operations portfolio product focused on reliable scheduling and visit flow. All displayed patient identities are synthetic.
 
-## Current scope
+## Verified capabilities
 
-- Responsive premium productivity landing page using clearly labeled synthetic preview data
-- `GET /api/health` with a non-cached server timestamp
-- No AI output is shown until a real provider is configured and a human approval workflow exists
+- Authenticated persistent appointment booking
+- Postgres exclusion constraint that rejects overlapping doctor slots with HTTP 409
+- Forward-only scheduled → waiting → in-consultation → completed queue state machine
+- Conditional transitions and append-only audit inserts in one SQL statement
+- Unit-tested transition policy, cloud CI, and production Playwright booking/check-in flow
 
-Requires Node.js 22+. Run `npm install`, then `npm run dev`.
+Role-specific accounts, consultation notes, AI summarization, reminders, billing, and calculated operations dashboards remain future scope. No AI output is fabricated.
+
+Commands: `npm run dev`, `npm run lint`, `npm test`, `npm run build`, `npm run test:e2e`, and `npm run seed`. See [architecture](docs/ARCHITECTURE.md), [API](docs/API.md), and [deployment](docs/DEPLOYMENT.md).
