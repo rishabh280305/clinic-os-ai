@@ -13,7 +13,7 @@ export async function GET() {
   const userId = await getDemoUser();
   if (!userId) return Response.json({ error: "Authentication required." }, { status: 401 });
   const sql = await database();
-  const items = await sql`SELECT id, doctor_id, patient_alias, starts_at, ends_at, status FROM clinic_os.appointments WHERE user_id = ${userId} ORDER BY starts_at ASC`;
+  const items = await sql`SELECT id, doctor_id, patient_alias, starts_at, ends_at, status, queue_state FROM clinic_os.appointments WHERE user_id = ${userId} ORDER BY starts_at ASC`;
   return Response.json({ items, dataPolicy: "Synthetic patient aliases only." });
 }
 
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     const sql = await database();
     const [item] = await sql`INSERT INTO clinic_os.appointments (user_id, doctor_id, patient_alias, starts_at, ends_at)
       VALUES (${userId}, ${parsed.data.doctorId}, ${parsed.data.patientAlias}, ${parsed.data.startsAt}, ${endsAt})
-      RETURNING id, doctor_id, patient_alias, starts_at, ends_at, status`;
+      RETURNING id, doctor_id, patient_alias, starts_at, ends_at, status, queue_state`;
     return Response.json({ item }, { status: 201 });
   } catch (error: unknown) {
     const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
