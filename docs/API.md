@@ -5,7 +5,8 @@
 | GET | `/api/health` | Public | Service health |
 | GET/POST/DELETE | `/api/auth/demo` | Public/cookie | Manage a signed receptionist, doctor, or admin session |
 | GET/POST/PATCH | `/api/appointments` | Role-scoped | List, book, cancel, reschedule, or record a no-show |
-| GET | `/api/resources` | Any role | Doctors, synthetic patients, and waitlist |
+| GET | `/api/resources?q=…` | Any role | Doctors, consultation types, availability, waitlist, and matching patient history |
+| POST | `/api/availability` | Receptionist/admin | Upsert one doctor weekday availability window |
 | POST | `/api/waitlist` | Receptionist/admin | Add a validated waitlist request |
 | GET/PATCH | `/api/queue` | Role-scoped | Read flow/audit or apply a permitted transition |
 | GET/POST/PATCH | `/api/notes` | Doctor/admin read; doctor writes | Draft, provider-summarize, and approve notes |

@@ -1,6 +1,7 @@
 import { BookingDemo } from "@/components/booking-demo";
 import { QueueDemo } from "@/components/queue-demo";
 import { ClinicOperations } from "@/components/clinic-operations";
+import { ScheduleResources } from "@/components/schedule-resources";
 
 const agenda = [["09:00","New patient","Confirmed"],["09:30","Follow-up","In clinic"],["10:15","Consultation","Scheduled"]];
 export default function Home() {
@@ -12,5 +13,6 @@ export default function Home() {
     <BookingDemo />
     <QueueDemo />
     <ClinicOperations />
+    <ScheduleResources />
   </main>;
 }
