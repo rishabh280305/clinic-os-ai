@@ -43,6 +43,14 @@ export async function database() {
       to_state text NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now()
     )`;
+    await sql`ALTER TABLE clinic_os.appointments ADD COLUMN IF NOT EXISTS consultation_type text NOT NULL DEFAULT 'general'`;
+    await sql`ALTER TABLE clinic_os.appointments ADD COLUMN IF NOT EXISTS no_show boolean NOT NULL DEFAULT false`;
+    await sql`CREATE TABLE IF NOT EXISTS clinic_os.doctors (id text PRIMARY KEY, display_name text NOT NULL, specialty text NOT NULL, active boolean NOT NULL DEFAULT true)`;
+    await sql`INSERT INTO clinic_os.doctors(id,display_name,specialty) VALUES ('dr-mehta','Dr. Mehta','General medicine'),('dr-rao','Dr. Rao','Family medicine') ON CONFLICT(id) DO NOTHING`;
+    await sql`CREATE TABLE IF NOT EXISTS clinic_os.patients (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, alias text UNIQUE NOT NULL, created_at timestamptz NOT NULL DEFAULT now())`;
+    await sql`CREATE TABLE IF NOT EXISTS clinic_os.waitlist (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, patient_alias text NOT NULL, doctor_id text NOT NULL REFERENCES clinic_os.doctors(id), preferred_date date NOT NULL, status text NOT NULL DEFAULT 'waiting' CHECK(status IN('waiting','offered','booked','cancelled')), created_at timestamptz NOT NULL DEFAULT now())`;
+    await sql`CREATE TABLE IF NOT EXISTS clinic_os.consultation_notes (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, appointment_id bigint NOT NULL REFERENCES clinic_os.appointments(id), author_id text NOT NULL, draft text NOT NULL, summary text, summary_mode text NOT NULL DEFAULT 'manual', approved_at timestamptz, follow_up_on date, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now())`;
+    await sql`CREATE TABLE IF NOT EXISTS clinic_os.notifications (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, appointment_id bigint REFERENCES clinic_os.appointments(id), channel text NOT NULL CHECK(channel IN('in_app','email')), recipient text NOT NULL, message text NOT NULL, status text NOT NULL DEFAULT 'queued' CHECK(status IN('queued','sent','failed')), provider_id text, error text, created_at timestamptz NOT NULL DEFAULT now())`;
   })();
   await initialized;
   return sql;

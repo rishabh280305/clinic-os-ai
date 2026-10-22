@@ -1,37 +1,6 @@
-import { z } from "zod";
-import { database } from "@/lib/db";
-import { getDemoUser } from "@/lib/session";
-
-const inputSchema = z.object({
-  doctorId: z.string().trim().min(2).max(40),
-  patientAlias: z.string().trim().min(2).max(40),
-  startsAt: z.string().datetime({ offset: true }).refine((value) => new Date(value).getTime() > Date.now(), "Start must be in the future"),
-  durationMinutes: z.coerce.number().int().min(10).max(240),
-});
-
-export async function GET() {
-  const userId = await getDemoUser();
-  if (!userId) return Response.json({ error: "Authentication required." }, { status: 401 });
-  const sql = await database();
-  const items = await sql`SELECT id, doctor_id, patient_alias, starts_at, ends_at, status, queue_state FROM clinic_os.appointments WHERE user_id = ${userId} ORDER BY starts_at ASC`;
-  return Response.json({ items, dataPolicy: "Synthetic patient aliases only." });
-}
-
-export async function POST(request: Request) {
-  const userId = await getDemoUser();
-  if (!userId) return Response.json({ error: "Authentication required." }, { status: 401 });
-  const parsed = inputSchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return Response.json({ error: "Provide a doctor, synthetic patient alias, future start, and 10–240 minute duration." }, { status: 400 });
-  const endsAt = new Date(new Date(parsed.data.startsAt).getTime() + parsed.data.durationMinutes * 60_000).toISOString();
-  try {
-    const sql = await database();
-    const [item] = await sql`INSERT INTO clinic_os.appointments (user_id, doctor_id, patient_alias, starts_at, ends_at)
-      VALUES (${userId}, ${parsed.data.doctorId}, ${parsed.data.patientAlias}, ${parsed.data.startsAt}, ${endsAt})
-      RETURNING id, doctor_id, patient_alias, starts_at, ends_at, status, queue_state`;
-    return Response.json({ item }, { status: 201 });
-  } catch (error: unknown) {
-    const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
-    if (code === "23P01") return Response.json({ error: "That doctor already has an overlapping appointment." }, { status: 409 });
-    throw error;
-  }
-}
+import{z}from"zod";import{database}from"@/lib/db";import{getDemoSession}from"@/lib/session";import{canManageSchedule}from"@/lib/permissions";
+const input=z.object({doctorId:z.string().trim().min(2).max(40),patientAlias:z.string().trim().min(2).max(40),startsAt:z.string().datetime({offset:true}).refine(value=>new Date(value).getTime()>Date.now()),durationMinutes:z.coerce.number().int().min(10).max(240),consultationType:z.string().trim().min(2).max(50).default("general")});
+const action=z.object({id:z.coerce.number().int().positive(),action:z.enum(["cancel","reschedule","mark_no_show"]),startsAt:z.string().datetime({offset:true}).optional(),durationMinutes:z.coerce.number().int().min(10).max(240).optional()});
+export async function GET(){const session=await getDemoSession();if(!session)return Response.json({error:"Authentication required."},{status:401});const sql=await database();const items=await sql`SELECT id,doctor_id,patient_alias,starts_at,ends_at,status,queue_state,consultation_type,no_show FROM clinic_os.appointments ORDER BY starts_at ASC LIMIT 250`;return Response.json({items,role:session.role,dataPolicy:"Synthetic patient aliases only."})}
+export async function POST(request:Request){const session=await getDemoSession();if(!session)return Response.json({error:"Authentication required."},{status:401});if(!canManageSchedule(session.role))return Response.json({error:"Only receptionists and administrators can book appointments."},{status:403});const parsed=input.safeParse(await request.json().catch(()=>null));if(!parsed.success)return Response.json({error:"Provide a doctor, synthetic patient alias, future start, consultation type, and 10–240 minute duration."},{status:400});const endsAt=new Date(new Date(parsed.data.startsAt).getTime()+parsed.data.durationMinutes*60000).toISOString();try{const sql=await database();await sql`INSERT INTO clinic_os.patients(alias) VALUES(${parsed.data.patientAlias}) ON CONFLICT(alias) DO NOTHING`;const[item]=await sql`INSERT INTO clinic_os.appointments(user_id,doctor_id,patient_alias,starts_at,ends_at,consultation_type) VALUES(${session.userId},${parsed.data.doctorId},${parsed.data.patientAlias},${parsed.data.startsAt},${endsAt},${parsed.data.consultationType}) RETURNING id,doctor_id,patient_alias,starts_at,ends_at,status,queue_state,consultation_type,no_show`;await sql`INSERT INTO clinic_os.notifications(appointment_id,channel,recipient,message,status) VALUES(${item.id},'in_app',${parsed.data.patientAlias},${`Appointment ${item.id} booked.`},'sent')`;return Response.json({item},{status:201})}catch(error:unknown){const code=typeof error==="object"&&error&&"code"in error?String((error as{code?:unknown}).code):"";if(code==="23P01")return Response.json({error:"That doctor already has an overlapping appointment."},{status:409});throw error}}
+export async function PATCH(request:Request){const session=await getDemoSession();if(!session)return Response.json({error:"Authentication required."},{status:401});if(!canManageSchedule(session.role))return Response.json({error:"Only receptionists and administrators can change the schedule."},{status:403});const parsed=action.safeParse(await request.json().catch(()=>null));if(!parsed.success)return Response.json({error:"Provide a valid scheduling action."},{status:400});const sql=await database();try{let rows;if(parsed.data.action==="reschedule"){if(!parsed.data.startsAt||new Date(parsed.data.startsAt).getTime()<=Date.now())return Response.json({error:"Rescheduling requires a future start."},{status:400});const minutes=parsed.data.durationMinutes??30;const end=new Date(new Date(parsed.data.startsAt).getTime()+minutes*60000).toISOString();rows=await sql`UPDATE clinic_os.appointments SET starts_at=${parsed.data.startsAt},ends_at=${end},status='booked',queue_state='scheduled',no_show=false WHERE id=${parsed.data.id} RETURNING id,doctor_id,patient_alias,starts_at,ends_at,status,queue_state,consultation_type,no_show`}else if(parsed.data.action==="mark_no_show"){rows=await sql`UPDATE clinic_os.appointments SET status='cancelled',no_show=true WHERE id=${parsed.data.id} AND status='booked' RETURNING id,doctor_id,patient_alias,starts_at,ends_at,status,queue_state,consultation_type,no_show`}else{rows=await sql`UPDATE clinic_os.appointments SET status='cancelled' WHERE id=${parsed.data.id} AND status='booked' RETURNING id,doctor_id,patient_alias,starts_at,ends_at,status,queue_state,consultation_type,no_show`}const item=rows[0];if(!item)return Response.json({error:"Appointment not found or no longer changeable."},{status:404});await sql`INSERT INTO clinic_os.audit_events(appointment_id,actor_user_id,event_type,from_state,to_state) VALUES(${item.id},${session.userId},${parsed.data.action},'scheduled',${item.status})`;await sql`INSERT INTO clinic_os.notifications(appointment_id,channel,recipient,message,status) VALUES(${item.id},'in_app',${String(item.patient_alias)},${`Appointment ${item.id}: ${parsed.data.action}.`},'sent')`;return Response.json({item})}catch(error:unknown){const code=typeof error==="object"&&error&&"code"in error?String((error as{code?:unknown}).code):"";if(code==="23P01")return Response.json({error:"The rescheduled time overlaps another appointment for this doctor."},{status:409});throw error}}
