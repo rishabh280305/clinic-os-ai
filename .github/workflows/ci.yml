@@ -13,6 +13,13 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
-      - run: npm run lint
+      - name: Lint with annotations
+        shell: bash
+        run: |
+          set +e
+          npx eslint . --format json > eslint-report.json
+          status=$?
+          node -e 'for (const file of JSON.parse(require("fs").readFileSync("eslint-report.json","utf8"))) for (const item of file.messages) console.log(`::${item.severity===2?"error":"warning"} file=${file.filePath},line=${item.line||1},col=${item.column||1}::${item.message} (${item.ruleId||"eslint"})`)'
+          exit $status
       - run: npm test
       - run: npm run build
